@@ -16,6 +16,10 @@ module.exports = (sequelize, DataTypes) => {
           type: DataTypes.FLOAT,
           allowNull: false,
         },
+        previousPrice: {
+          type: DataTypes.FLOAT,
+          allowNull: true,
+        },
         last_updated: {
           type: DataTypes.DATE,
           allowNull: false,
