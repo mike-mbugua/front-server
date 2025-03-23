@@ -1,56 +1,238 @@
-const express = require('express');
+const express = require("express");
 const router = express.Router();
-const db = require('../config/db');
+const db = require("../config/db");
+const Product = db.products;
 const Price = db.prices;
-const { scrapeAllProducts } = require('../scrappers/priceScrapers');
+const { scrapePrice } = require("../utils/scrapePrice");
+const cron = require("node-cron");
+const nodemailer = require("nodemailer");
+require("dotenv").config();
 
-// Run scraper manually
-router.post('/scrape', async (req, res) => {
+const transporter = nodemailer.createTransport({
+  service: process.env.EMAIL_SERVICE, 
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASSWORD
+  }
+});
+
+const checkAndUpdatePrices = async (specificProductId = null) => {
   try {
-    const results = await scrapeAllProducts();
-    if (results.length > 0) {
-      await Price.insertMany(results);
-      res.json({ success: true, message: `Scraped ${results.length} products` });
-    } else {
-      res.json({ success: false, message: 'No products scraped' });
+    const whereClause = specificProductId ? { id: specificProductId } : {};
+    const products = await Product.findAll({ where: whereClause });
+    
+    if (products.length === 0) {
+      console.log("No products found to check");
+      return { success: false, message: "No products found to check" };
     }
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
+    
+    const priceChanges = [];
 
-router.get('/latest', async (req, res) => {
-  try {
-    const latestPrices = await Price.aggregate([
-      { $sort: { dateScraped: -1 } },
-      { $group: {
-          _id: {
-            productName: "$productName",
-            competitorName: "$competitorName"
-          },
-          latestEntry: { $first: "$$ROOT" }
+    for (const product of products) {
+      const scrapedData = await scrapePrice(product.url);
+      
+      // Add null check to handle case when scraping fails completely
+      if (scrapedData === null) {
+        console.log(`Failed to scrape price for ${product.name}`);
+        continue;
+      }
+      
+      const newPrice = typeof scrapedData === "object" ? scrapedData.price : scrapedData;
+      
+      // Check if newPrice is valid before proceeding
+      if (newPrice === null || newPrice === undefined || isNaN(Number(newPrice))) {
+        console.log(`Invalid price scraped for ${product.name}`);
+        continue;
+      }
+
+      const newPriceNum = Number(newPrice);
+      
+      // Rest of your code remains the same...
+      // Find the latest price record for this product
+      const latestPrice = await Price.findOne({
+        where: { productId: product.id },
+        order: [["date_scraped", "DESC"]],
+      });
+
+      const lastPrice = latestPrice ? Number(latestPrice.price) : null;
+      
+      console.log(`Comparing prices for ${product.name}: Last price = ${lastPrice}, New price = ${newPriceNum}`);
+
+      const priceChanged = lastPrice !== null && Math.abs(lastPrice - newPriceNum) > 0.001;
+
+      if (priceChanged) {
+        console.log(`Price changed for ${product.name}: ${lastPrice} -> ${newPriceNum}`);
+        
+        await product.update({
+          currentPrice: newPriceNum,
+          previousPrice: lastPrice,
+          lastUpdated: new Date(),
+        });
+
+        if (latestPrice) {
+          await latestPrice.update({
+            price: newPriceNum,
+            date_scraped: new Date(),
+            previous_price: lastPrice
+          });
+        } else {
+          await Price.create({
+            product_name: product.name,
+            competitor_url: product.url,
+            productId: product.id,
+            price: newPriceNum,
+          });
         }
-      },
-      { $replaceRoot: { newRoot: "$latestEntry" } },
-      { $sort: { productName: 1, competitorName: 1 } }
-    ]);
+
+        priceChanges.push({
+          name: product.name,
+          url: product.url,
+          oldPrice: lastPrice,
+          newPrice: newPriceNum,
+          percentChange: ((newPriceNum - lastPrice) / lastPrice * 100).toFixed(2)
+        });
+      } else if (lastPrice === null) {
+        console.log(`Initial price set for ${product.name}: ${newPriceNum}`);
+        
+        await Price.create({
+          product_name: product.name,
+          competitor_url: product.url,
+          productId: product.id,
+          price: newPriceNum,
+        });
+        
+        await product.update({
+          currentPrice: newPriceNum,
+          lastUpdated: new Date(),
+        });
+      } else {
+        console.log(`No price change for ${product.name}, still at ${newPriceNum}`);
+        
+       if (latestPrice) {
+          await latestPrice.update({
+            date_scraped: new Date()
+          });
+        }
+        
+        await product.update({
+          lastUpdated: new Date(),
+        });
+      }
+    }
     
-    res.json(latestPrices);
+    if (priceChanges.length > 0) {
+      await sendPriceChangeEmail(priceChanges);
+      return { success: true, message: "Price changes detected and email sent", changes: priceChanges };
+    }
+    
+    return { success: true, message: "Prices checked, no changes detected" };
+  } catch (error) {
+    console.error("Error updating prices:", error);
+    return { success: false, error: error.message };
+  }
+};
+
+cron.schedule("30 15 * * *", () => {
+  checkAndUpdatePrices();
+});
+
+router.post("/scrape", async (req, res) => {
+  try {
+    const result = await checkAndUpdatePrices();
+    res.json(result);
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
 });
 
-router.get('/history/:productName', async (req, res) => {
+// New endpoint for manually checking a specific product
+router.post("/check/:productId", async (req, res) => {
   try {
-    const history = await Price.find({ 
-      productName: req.params.productName 
-    }).sort({ dateScraped: 1 });
-    
-    res.json(history);
+    const productId = req.params.productId;
+    const result = await checkAndUpdatePrices(productId);
+    res.json(result);
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
 });
+
+router.get("/latest", async (req, res) => {
+  try {
+    const products = await Product.findAll({
+      include: [
+        {
+          model: Price,
+          as: "prices",
+          order: [["date_scraped", "DESC"]],
+          limit: 1,
+        },
+      ],
+    });
+
+    res.json(products);
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.get("/history/:productId", async (req, res) => {
+  try {
+    const priceHistory = await Price.findAll({
+      where: { productId: req.params.productId },
+      order: [["date_scraped", "ASC"]],
+    });
+
+    res.json(priceHistory);
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+const sendPriceChangeEmail = async (priceChanges) => {
+  const priceChangesHTML = priceChanges.map(change => {
+    const priceDirection = change.newPrice > change.oldPrice ? '📈' : '📉';
+    const changeColor = change.newPrice > change.oldPrice ? 'red' : 'green';
+    
+    return `
+      <tr>
+        <td><a href="${change.url}" target="_blank">${change.name}</a></td>
+        <td>$${change.oldPrice}</td>
+        <td>$${change.newPrice}</td>
+        <td style="color: ${changeColor}">${priceDirection} ${change.percentChange}%</td>
+      </tr>
+    `;
+  }).join('');
+
+  const emailHtml = `
+    <h2>Price Change Alert</h2>
+    <p>The following products have changed in price:</p>
+    <table border="1" cellpadding="5" cellspacing="0">
+      <tr>
+        <th>Product</th>
+        <th>Old Price</th>
+        <th>New Price</th>
+        <th>Change</th>
+      </tr>
+      ${priceChangesHTML}
+    </table>
+    <p>This is an automated notification from your price tracker.</p>
+  `;
+
+  const mailOptions = {
+    from: process.env.EMAIL_USER,
+    to: process.env.NOTIFICATION_EMAIL,
+    subject: `Price Alert: ${priceChanges.length} Product${priceChanges.length > 1 ? 's' : ''} Changed`,
+    html: emailHtml
+  };
+
+  try {
+    await transporter.sendMail(mailOptions);
+    console.log(`Email notification sent for ${priceChanges.length} price changes`);
+    return true;
+  } catch (error) {
+    console.error("Error sending email notification:", error);
+    return false;
+  }
+};
 
 module.exports = router;

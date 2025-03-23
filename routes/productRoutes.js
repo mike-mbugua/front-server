@@ -1,7 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const productController = require('../controllers/product');
+const scrapePrice =require('../scrappers/priceScrapers')
 router.post('/', productController.createNewProduct);    
-router.get('/', productController.getAllProducts);    
+router.post('/', productController.createNewProduct);        
 
 module.exports = router;
