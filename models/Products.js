@@ -10,14 +10,22 @@ module.exports = (sequelize, DataTypes) => {
         url: {
           type: DataTypes.STRING,
           allowNull: false,
-          unique: true,
+          unique: false,
         },
-        current_price: {
-          type: DataTypes.FLOAT,
+        currentPrice: {
+          type: DataTypes.INTEGER,
           allowNull: false,
         },
-        previousPrice: {
-          type: DataTypes.FLOAT,
+        newPrice: {
+          type: DataTypes.INTEGER,
+          allowNull: true,
+        },
+        competitorName: {
+          type: DataTypes.STRING,
+          allowNull: false,
+        },
+        lastChecked: {
+          type: DataTypes.DATE,
           allowNull: true,
         },
         last_updated: {

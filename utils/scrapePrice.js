@@ -1,5 +1,3 @@
-const puppeteer = require("puppeteer");
-
 exports.scrapePrice = async (url) => {
   let browser;
   try {
@@ -7,20 +5,21 @@ exports.scrapePrice = async (url) => {
     const page = await browser.newPage();
     await page.goto(url, { waitUntil: "domcontentloaded", timeout: 15000 });
 
-    await page.waitForSelector("h2.css-17ctnp", { timeout: 10000 });
+    // Define selectors
+    const normalPriceSelector = "h2.css-17ctnp, .css-1bdwabt";
+    const offerPriceSelector = ".css-1i90gmp";
 
-    const price = await page.evaluate(() => {
-      const priceElement = document.querySelector("h2.css-17ctnp");
-      if (!priceElement) return null;
+    const normalPrice = await page.evaluate((selector) => {
+      const el = document.querySelector(selector);
+      return el ? parseFloat(el.innerText.replace(/[^\d.]/g, "")) : null;
+    }, normalPriceSelector);
 
-      let priceText = priceElement.innerText.replace("KES", "").trim();
-      
-      priceText = priceText.replace(/[^\d.]/g, ""); 
+    const offerPrice = await page.evaluate((selector) => {
+      const el = document.querySelector(selector);
+      return el ? parseFloat(el.innerText.replace(/[^\d.]/g, "")) : null;
+    }, offerPriceSelector);
 
-      return parseFloat(priceText); 
-    });
-
-    return { price: isNaN(price) ? null : price }; 
+    return { normalPrice: isNaN(normalPrice) ? null : normalPrice, offerPrice: isNaN(offerPrice) ? null : offerPrice };
   } catch (error) {
     console.error(`❌ Error scraping ${url}:`, error.message);
     return null;

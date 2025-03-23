@@ -45,7 +45,6 @@ const checkAndUpdatePrices = async () => {
       if (priceChanged) {
         console.log(`Price changed for ${product.name}: ${lastPrice} -> ${newPriceNum}`);
         
-        // Update the product with new price and previous price
         await product.update({
           currentPrice: newPriceNum,
           previousPrice: lastPrice,
@@ -91,8 +90,7 @@ const checkAndUpdatePrices = async () => {
       } else {
         console.log(`No price change for ${product.name}, still at ${newPriceNum}`);
         
-        // Just update the timestamp on the existing record
-        if (latestPrice) {
+       if (latestPrice) {
           await latestPrice.update({
             date_scraped: new Date()
           });
@@ -113,7 +111,6 @@ const checkAndUpdatePrices = async () => {
 };
 
 cron.schedule("30 15 * * *", () => {
-  console.log("Running scheduled price check...");
   checkAndUpdatePrices();
 });
 

@@ -19,7 +19,6 @@ router.post('/scrape', async (req, res) => {
   }
 });
 
-// Get latest prices
 router.get('/latest', async (req, res) => {
   try {
     const latestPrices = await Price.aggregate([
@@ -42,7 +41,6 @@ router.get('/latest', async (req, res) => {
   }
 });
 
-// Get price history for a product
 router.get('/history/:productName', async (req, res) => {
   try {
     const history = await Price.find({ 
