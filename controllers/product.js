@@ -31,3 +31,14 @@ exports.createNewProduct = async (req, res) => {
         res.status(500).json({ success: false, error: error.message });
     }
 };
+
+exports.getAllProducts = async (req, res) => {
+    try {
+        const products = await Product.findAll();
+        return res.status(200).json({ success: true, products });
+    } catch (error) {
+        console.log(error)
+        return res.status(500).json({ success: false, error: error.message });
+        
+    }
+}
