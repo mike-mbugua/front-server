@@ -42,3 +42,14 @@ exports.getAllProducts = async (req, res) => {
         
     }
 }
+exports.getAllZuchiniProducts = async (req, res) => {
+    try {
+        const products = await Product.findAll({
+            where: {competitorName: "Zuchini"}
+        });
+        return res.status(200).json({ success: true, products });
+    } catch (error) {
+        return res.status(500).json({ success: false, error: error.message });
+        
+    }
+}

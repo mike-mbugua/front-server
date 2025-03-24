@@ -38,6 +38,7 @@ db.Sequelize = Sequelize;
 db.sequelize = sequelize;
 db.prices = require("../models/Price")(sequelize, DataTypes);
 db.products = require("../models/Products")(sequelize, DataTypes);
+db.offers = require("../models/Offers")(sequelize, DataTypes);
 
 db.products.hasMany(db.prices, { as: "product", foreignKey: "productId" });
 

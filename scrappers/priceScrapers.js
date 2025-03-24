@@ -3,7 +3,7 @@ const router = express.Router();
 const db = require("../config/db");
 const Product = db.products;
 const Price = db.prices;
-const { scrapePrice } = require("../utils/scrapePrice");
+const { scrapeCarrefourPrices } = require("../utils/scrapePrice");
 const cron = require("node-cron");
 const nodemailer = require("nodemailer");
 require("dotenv").config();
@@ -21,7 +21,7 @@ const checkAndUpdatePrices = async () => {
     const priceChanges = [];
 
     for (const product of products) {
-      const scrapedData = await scrapePrice(product.url);
+      const scrapedData = await scrapeCarrefourPrices(product.url);
       const newPrice = typeof scrapedData === "object" ? scrapedData.price : scrapedData;
       if (!newPrice) {
         console.log(`Failed to scrape price for ${product.name}`);
@@ -30,7 +30,6 @@ const checkAndUpdatePrices = async () => {
 
       const newPriceNum = Number(newPrice);
       
-      // Find the latest price record for this product
       const latestPrice = await Price.findOne({
         where: { productId: product.id },
         order: [["date_scraped", "DESC"]],
@@ -110,21 +109,21 @@ const checkAndUpdatePrices = async () => {
   }
 };
 
-cron.schedule("30 15 * * *", () => {
-  checkAndUpdatePrices();
-});
+// cron.schedule("30 15 * * *", () => {
+//   checkAndUpdatePrices();
+// });
 
 
 
 
-router.post("/scrape", async (req, res) => {
-  try {
-    await checkAndUpdatePrices();
-    res.json({ success: true, message: "Scraping process initiated" });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
+// router.post("/scrape", async (req, res) => {
+//   try {
+//     await checkAndUpdatePrices();
+//     res.json({ success: true, message: "Scraping process initiated" });
+//   } catch (error) {
+//     res.status(500).json({ success: false, error: error.message });
+//   }
+// });
 
 router.get("/latest", async (req, res) => {
   try {
